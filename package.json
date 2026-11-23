@@ -2,7 +2,7 @@
   "name": "control-bebe-html-js",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "npx serve ."
+  "dependencies": {
+    "mongodb": "^6.10.0"
   }
 }
