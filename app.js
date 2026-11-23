@@ -63,11 +63,13 @@ const RefreshCw = createLucideIcon('refresh-cw');
 const Link2 = createLucideIcon('link-2');
 
 // --- API Cliente ---
-const rawApiUrl = window.CONTROL_API_URL || 'https://control-ju-na-backend.vercel.app';
-const API_BASE_URL = String(rawApiUrl)
-  .replace(/^\[.*\]\(/, '')
-  .replace(/\)$/, '')
-  .replace(/\/+$/, '');
+const rawApiUrl = window.CONTROL_API_URL || '';
+const API_BASE_URL = rawApiUrl
+  ? String(rawApiUrl)
+      .replace(/^\[.*\]\(/, '')
+      .replace(/\)$/, '')
+      .replace(/\/+$/, '')
+  : window.location.origin;
 
 async function fetchFamilySpace(familyCode) {
   const code = encodeURIComponent(familyCode.toUpperCase().trim());
@@ -93,6 +95,7 @@ async function syncFamilySpace(familyCode, payload) {
   }
   return res.json();
 }
+
 // --- Utilidades de Fecha ---
 const toLocalISODate = (date) => {
   const y = date.getFullYear();
@@ -1259,7 +1262,7 @@ function App() {
 
                     <div className="mt-4 pt-3 border-t border-[#221F1B] flex items-center justify-between">
                       <span className="text-[11px] text-[#8A7F72]">
-                        Cargado por {app.createdBy || 'Ju'}
+                        Cargado por {app.createdBy || activeParent}
                       </span>
                       <button
                         onClick={() =>
@@ -1289,7 +1292,7 @@ function App() {
               <div>
                 <h2 className="text-lg font-bold text-[#F5EFE6]">Estudios médicos y controles</h2>
                 <p className="text-xs text-[#9C9183]">
-                  Ecografías, análisis, monitoreos y comentarios entre Mamá y Papá
+                  Ecografías, análisis, monitoreos y comentarios entre Ju y Na
                 </p>
               </div>
               <button
@@ -1531,7 +1534,7 @@ function App() {
                             {formatReadableDate(note.date)}
                           </span>
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#221F1B] text-[#E6D5B8] border border-[#332E28] font-medium">
-                            {note.author || 'Ju'}
+                            {note.author || activeParent}
                           </span>
                           {note.mood && (
                             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-[#E6D5B8]/12 text-[#E6D5B8]">
@@ -1734,7 +1737,7 @@ function App() {
                       >
                         <div className="flex items-center justify-between text-xs text-[#9C9183] mb-1">
                           <span className="font-semibold text-[#C8B08E]">
-                            {note.title || 'Comentario'} • {note.author || 'Ju'}
+                            {note.title || 'Comentario'} • {note.author || activeParent}
                           </span>
                           <span>{formatReadableDate(note.date)}</span>
                         </div>
@@ -1854,7 +1857,7 @@ function App() {
             <div className="flex items-start gap-2.5 text-xs text-[#9C9183] bg-[#1A1816] p-3 rounded-2xl border border-[#26221E]">
               <ShieldCheck className="w-4 h-4 text-[#E6D5B8] shrink-0 mt-0.5" />
               <span>
-                Ambos pueden cambiar entre <strong>Mamá</strong> y <strong>Papá</strong> arriba a la
+                Ambas pueden cambiar entre <strong>Ju</strong> y <strong>Na</strong> arriba a la
                 derecha para identificar quién escribe cada comentario o turno.
               </span>
             </div>
