@@ -61,6 +61,8 @@ const Cloud = createLucideIcon('cloud');
 const CloudOff = createLucideIcon('cloud-off');
 const RefreshCw = createLucideIcon('refresh-cw');
 const Link2 = createLucideIcon('link-2');
+const Paperclip = createLucideIcon('paperclip');
+const FileText = createLucideIcon('file-text');
 
 // --- API Cliente ---
 const rawApiUrl = window.CONTROL_API_URL || '';
@@ -121,6 +123,124 @@ const formatReadableDate = (dateStr) => {
     month: 'short',
     year: 'numeric'
   });
+};
+
+// --- Lectura y compresión liviana de archivos adjuntos ---
+const MAX_ATTACHMENT_BYTES = 1.5 * 1024 * 1024; // 1.5 MB máx. para archivos no imagen
+
+const readFileAsAttachment = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No se seleccionó ningún archivo'));
+
+    if (file.type && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+
+          resolve({
+            id: 'att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+            name: file.name.replace(/\.[^.]+$/, '.jpg'),
+            type: 'image/jpeg',
+            dataUrl: compressedDataUrl
+          });
+        };
+        img.onerror = () => reject(new Error('No se pudo procesar la imagen'));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      return reject(
+        new Error(`"${file.name}" supera los 1.5 MB. Probá con un archivo más liviano.`)
+      );
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        id: 'att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        dataUrl: reader.result
+      });
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+
+const renderAttachmentsList = (attachments = [], onRemove = null) => {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="space-y-2 pt-2">
+      <p className="text-[11px] font-semibold text-[#C8B08E] flex items-center gap-1">
+        <Paperclip className="w-3 h-3" /> Archivos adjuntos ({attachments.length})
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {attachments.map((att) => (
+          <div
+            key={att.id}
+            className="flex items-center justify-between gap-2 bg-[#1A1816] border border-[#2C2722] rounded-xl p-2 text-xs"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {att.type?.startsWith('image/') && att.dataUrl ? (
+                <a href={att.dataUrl} target="_blank" rel="noreferrer" className="shrink-0">
+                  <img
+                    src={att.dataUrl}
+                    alt={att.name}
+                    className="w-10 h-10 rounded-lg object-cover border border-[#38332D]"
+                  />
+                </a>
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-[#26231F] text-[#E6D5B8] flex items-center justify-center shrink-0 border border-[#38332D]">
+                  <FileText className="w-4 h-4" />
+                </div>
+              )}
+              <a
+                href={att.dataUrl}
+                download={att.name}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate text-[#E5DDD0] hover:text-[#E6D5B8] underline"
+                title={att.name}
+              >
+                {att.name}
+              </a>
+            </div>
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(att.id)}
+                className="text-[#8A7F72] hover:text-rose-400 p-1 shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 // --- Generador de Calendario para iPhone / Apple Calendar (.ics) ---
@@ -276,17 +396,20 @@ function App() {
   const [newReminderDesc, setNewReminderDesc] = useState('');
 
   const [showAppModal, setShowAppModal] = useState(false);
+  const [appError, setAppError] = useState('');
   const [appForm, setAppForm] = useState({
     title: '',
     doctor: '',
     location: '',
     date: toLocalISODate(new Date()),
     time: '10:00',
-    description: ''
+    description: '',
+    attachments: []
   });
 
   const [studyFilter, setStudyFilter] = useState('todos');
   const [showStudyModal, setShowStudyModal] = useState(false);
+  const [studyError, setStudyError] = useState('');
   const [studyForm, setStudyForm] = useState({
     category: 'ecografia',
     customType: '',
@@ -296,18 +419,21 @@ function App() {
     week: '',
     clinic: '',
     status: 'pendiente',
-    description: ''
+    description: '',
+    attachments: []
   });
   const [commentDrafts, setCommentDrafts] = useState({});
 
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteError, setNoteError] = useState('');
   const [noteSearch, setNoteSearch] = useState('');
   const [noteForm, setNoteForm] = useState({
     title: '',
     date: toLocalISODate(new Date()),
     mood: '',
     symptoms: [],
-    description: ''
+    description: '',
+    attachments: []
   });
 
   useEffect(() => {
@@ -503,12 +629,28 @@ function App() {
     return cells;
   }, [currentMonth]);
 
+  const handleFilesSelected = async (fileList, setFormFn, setErrFn) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    setErrFn('');
+    try {
+      const processed = await Promise.all(files.map(readFileAsAttachment));
+      setFormFn((prev) => ({
+        ...prev,
+        attachments: [...(prev.attachments || []), ...processed]
+      }));
+    } catch (err) {
+      setErrFn(err.message || 'No se pudo adjuntar el archivo');
+    }
+  };
+
   const addAppointment = (e) => {
     e.preventDefault();
     if (!appForm.title.trim()) return;
     const newItem = {
       id: 'app-' + Date.now(),
       ...appForm,
+      attachments: appForm.attachments || [],
       completed: false,
       createdBy: activeParent
     };
@@ -522,8 +664,10 @@ function App() {
       location: '',
       date: toLocalISODate(new Date()),
       time: '10:00',
-      description: ''
+      description: '',
+      attachments: []
     });
+    setAppError('');
     setShowAppModal(false);
   };
 
@@ -549,6 +693,7 @@ function App() {
     const newItem = {
       id: 'stu-' + Date.now(),
       ...studyForm,
+      attachments: studyForm.attachments || [],
       week: studyForm.week || String(pregnancyStats.weeks),
       comments: []
     };
@@ -565,8 +710,10 @@ function App() {
       week: '',
       clinic: '',
       status: 'pendiente',
-      description: ''
+      description: '',
+      attachments: []
     });
+    setStudyError('');
     setShowStudyModal(false);
   };
 
@@ -621,7 +768,10 @@ function App() {
 
   const addNote = (e) => {
     e.preventDefault();
-    if (!noteForm.description.trim()) return;
+    const hasText = Boolean(noteForm.description.trim() || noteForm.title.trim());
+    const hasFiles = Array.isArray(noteForm.attachments) && noteForm.attachments.length > 0;
+    if (!hasText && !hasFiles) return;
+
     const newItem = {
       id: 'note-' + Date.now(),
       title: noteForm.title.trim(),
@@ -629,6 +779,7 @@ function App() {
       mood: noteForm.mood || '',
       symptoms: noteForm.symptoms,
       description: noteForm.description.trim(),
+      attachments: noteForm.attachments || [],
       author: activeParent
     };
     setData((prev) => ({
@@ -640,8 +791,10 @@ function App() {
       date: toLocalISODate(new Date()),
       mood: '',
       symptoms: [],
-      description: ''
+      description: '',
+      attachments: []
     });
+    setNoteError('');
     setShowNoteModal(false);
   };
 
@@ -716,7 +869,10 @@ function App() {
       note.title ? `*${note.title}*` : '',
       note.description,
       note.mood ? `Emoción: ${note.mood}` : '',
-      note.symptoms.length > 0 ? `Síntomas: ${note.symptoms.join(', ')}` : ''
+      note.symptoms.length > 0 ? `Síntomas: ${note.symptoms.join(', ')}` : '',
+      note.attachments?.length > 0
+        ? `Adjuntos: ${note.attachments.map((a) => a.name).join(', ')}`
+        : ''
     ].filter(Boolean);
 
     const text = lines.join('\n');
@@ -742,7 +898,8 @@ function App() {
       (n.title || '').toLowerCase().includes(noteSearch.toLowerCase()) ||
       (n.description || '').toLowerCase().includes(noteSearch.toLowerCase()) ||
       (n.mood || '').toLowerCase().includes(noteSearch.toLowerCase()) ||
-      n.symptoms.some((s) => s.toLowerCase().includes(noteSearch.toLowerCase()))
+      n.symptoms.some((s) => s.toLowerCase().includes(noteSearch.toLowerCase())) ||
+      (n.attachments || []).some((a) => (a.name || '').toLowerCase().includes(noteSearch.toLowerCase()))
   );
 
   const selectedDayEvents = eventsByDate[selectedDate] || [];
@@ -998,7 +1155,8 @@ function App() {
 
               <div className="flex flex-wrap items-center gap-4 mt-5 pt-4 border-t border-[#24201C] text-xs text-[#9C9183]">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#E6D5B8]" /> FPP ({formatReadableDate(pregnancyStats.fppStr)})
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#E6D5B8]" /> FPP (
+                  {formatReadableDate(pregnancyStats.fppStr)})
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#D4B483]" /> Turno
@@ -1184,12 +1342,13 @@ function App() {
               <div>
                 <h2 className="text-lg font-bold text-[#F5EFE6]">Turnos y controles médicos</h2>
                 <p className="text-xs text-[#9C9183]">
-                  Agendá consultas, llevá el detalle y sumalas al calendario del iPhone
+                  Agendá consultas, adjuntá órdenes o recetas y sumalas al calendario del iPhone
                 </p>
               </div>
               <button
                 onClick={() => {
-                  setAppForm((prev) => ({ ...prev, date: selectedDate || todayStr }));
+                  setAppError('');
+                  setAppForm((prev) => ({ ...prev, date: selectedDate || todayStr, attachments: [] }));
                   setShowAppModal(true);
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#E6D5B8] hover:bg-[#EFE2CA] text-[#121110] text-sm font-bold shadow-md transition-colors"
@@ -1218,10 +1377,10 @@ function App() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
                         <button
                           onClick={() => toggleAppointment(app.id)}
-                          className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${
+                          className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center border shrink-0 transition-colors ${
                             app.completed
                               ? 'bg-[#E6D5B8] border-[#E6D5B8] text-[#121110]'
                               : 'border-[#574E43] hover:border-[#E6D5B8]'
@@ -1229,7 +1388,7 @@ function App() {
                         >
                           {app.completed && <CheckCircle2 className="w-4 h-4" />}
                         </button>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <h3
                             className={`font-bold text-base ${
                               app.completed ? 'line-through text-[#8A7F72]' : 'text-[#F5EFE6]'
@@ -1250,11 +1409,12 @@ function App() {
                               {app.description}
                             </p>
                           )}
+                          {renderAttachmentsList(app.attachments)}
                         </div>
                       </div>
                       <button
                         onClick={() => deleteAppointment(app.id)}
-                        className="text-[#8A7F72] hover:text-rose-400 p-1.5 rounded-xl hover:bg-[#1E1C19]"
+                        className="text-[#8A7F72] hover:text-rose-400 p-1.5 rounded-xl hover:bg-[#1E1C19] shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1292,15 +1452,17 @@ function App() {
               <div>
                 <h2 className="text-lg font-bold text-[#F5EFE6]">Estudios médicos y controles</h2>
                 <p className="text-xs text-[#9C9183]">
-                  Ecografías, análisis, monitoreos y comentarios entre Ju y Na
+                  Ecografías, análisis, archivos adjuntos y comentarios entre Ju y Na
                 </p>
               </div>
               <button
                 onClick={() => {
+                  setStudyError('');
                   setStudyForm((prev) => ({
                     ...prev,
                     date: selectedDate || todayStr,
-                    week: String(pregnancyStats.weeks)
+                    week: String(pregnancyStats.weeks),
+                    attachments: []
                   }));
                   setShowStudyModal(true);
                 }}
@@ -1344,7 +1506,7 @@ function App() {
                 <Activity className="w-10 h-10 text-[#C8B08E] mx-auto mb-3 opacity-80" />
                 <p className="font-semibold text-[#F5EFE6]">No hay estudios en esta categoría</p>
                 <p className="text-xs text-[#9C9183] mt-1">
-                  Registrá ecografías, análisis de sangre o controles y comenten juntos cada resultado.
+                  Registrá ecografías, análisis de sangre o controles y adjuntá imágenes o PDFs.
                 </p>
               </div>
             ) : (
@@ -1404,6 +1566,8 @@ function App() {
                           {study.description}
                         </p>
                       )}
+
+                      {renderAttachmentsList(study.attachments)}
 
                       <div className="pt-3 border-t border-[#23201C] space-y-3">
                         <div className="flex items-center justify-between">
@@ -1481,17 +1645,19 @@ function App() {
               <div>
                 <h2 className="text-lg font-bold text-[#F5EFE6]">Bitácora y comentarios</h2>
                 <p className="text-xs text-[#9C9183]">
-                  Escribí libremente lo que quieras recordar o compartir sin campos obligatorios extra
+                  Escribí libremente o subí fotos/archivos para compartir entre Ju y Na
                 </p>
               </div>
               <button
                 onClick={() => {
+                  setNoteError('');
                   setNoteForm({
                     title: '',
                     date: selectedDate || todayStr,
                     mood: '',
                     symptoms: [],
-                    description: ''
+                    description: '',
+                    attachments: []
                   });
                   setShowNoteModal(true);
                 }}
@@ -1505,7 +1671,7 @@ function App() {
               <Search className="w-4 h-4 text-[#8A7F72] absolute left-4 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar en comentarios, síntomas o notas..."
+                placeholder="Buscar en comentarios, síntomas, archivos o notas..."
                 value={noteSearch}
                 onChange={(e) => setNoteSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 rounded-2xl bg-[#141312] border border-[#292520] text-sm text-[#F5EFE6] placeholder-[#786E62] focus:outline-none focus:border-[#E6D5B8]"
@@ -1517,7 +1683,7 @@ function App() {
                 <BookOpen className="w-10 h-10 text-[#C8B08E] mx-auto mb-3 opacity-80" />
                 <p className="font-semibold text-[#F5EFE6]">Todavía no hay comentarios guardados</p>
                 <p className="text-xs text-[#9C9183] mt-1">
-                  Anotá dudas para el médico, sensaciones del día o momentos especiales.
+                  Anotá dudas para el médico, sensaciones del día o subí imágenes y documentos.
                 </p>
               </div>
             ) : (
@@ -1562,9 +1728,13 @@ function App() {
                       </div>
                     </div>
 
-                    <p className="text-sm text-[#E5DDD0] whitespace-pre-line leading-relaxed">
-                      {note.description}
-                    </p>
+                    {note.description && (
+                      <p className="text-sm text-[#E5DDD0] whitespace-pre-line leading-relaxed">
+                        {note.description}
+                      </p>
+                    )}
+
+                    {renderAttachmentsList(note.attachments)}
 
                     {note.symptoms && note.symptoms.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
@@ -1741,7 +1911,12 @@ function App() {
                           </span>
                           <span>{formatReadableDate(note.date)}</span>
                         </div>
-                        <p className="text-sm text-[#E5DDD0] line-clamp-2">{note.description}</p>
+                        <p className="text-sm text-[#E5DDD0] line-clamp-2">
+                          {note.description ||
+                            (note.attachments?.length
+                              ? `Adjunto: ${note.attachments.map((a) => a.name).join(', ')}`
+                              : '')}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1947,7 +2122,7 @@ function App() {
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <form
             onSubmit={addAppointment}
-            className="bg-[#161513] border border-[#2E2924] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4"
+            className="bg-[#161513] border border-[#2E2924] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-[#F5EFE6]">Nuevo turno médico</h3>
@@ -2035,6 +2210,28 @@ function App() {
                 onChange={(e) => setAppForm({ ...appForm, description: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#1C1A17] border border-[#2E2924] text-sm text-[#F5EFE6] focus:outline-none focus:border-[#E6D5B8]"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#C8B08E]">
+                Adjuntar archivos (órdenes, recetas, fotos o PDFs)
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  handleFilesSelected(e.target.files, setAppForm, setAppError);
+                  e.target.value = '';
+                }}
+                className="w-full text-xs text-[#D8CBB8] file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#26231F] file:text-[#E6D5B8] hover:file:bg-[#322E29] bg-[#1C1A17] rounded-xl border border-[#2E2924] p-1.5"
+              />
+              {appError && <p className="text-xs text-rose-400">{appError}</p>}
+              {renderAttachmentsList(appForm.attachments, (attId) =>
+                setAppForm((prev) => ({
+                  ...prev,
+                  attachments: (prev.attachments || []).filter((a) => a.id !== attId)
+                }))
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -2196,6 +2393,28 @@ function App() {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#C8B08E]">
+                Adjuntar archivos (ecografías, informes PDF, fotos)
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  handleFilesSelected(e.target.files, setStudyForm, setStudyError);
+                  e.target.value = '';
+                }}
+                className="w-full text-xs text-[#D8CBB8] file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#26231F] file:text-[#E6D5B8] hover:file:bg-[#322E29] bg-[#1C1A17] rounded-xl border border-[#2E2924] p-1.5"
+              />
+              {studyError && <p className="text-xs text-rose-400">{studyError}</p>}
+              {renderAttachmentsList(studyForm.attachments, (attId) =>
+                setStudyForm((prev) => ({
+                  ...prev,
+                  attachments: (prev.attachments || []).filter((a) => a.id !== attId)
+                }))
+              )}
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -2239,11 +2458,10 @@ function App() {
 
             <div>
               <label className="block text-xs font-semibold text-[#C8B08E] mb-1">
-                Comentario o nota *
+                Comentario o nota
               </label>
               <textarea
                 rows={4}
-                required
                 placeholder="Escribí acá tu comentario, sensación o recordatorio..."
                 value={noteForm.description}
                 onChange={(e) => setNoteForm({ ...noteForm, description: e.target.value })}
@@ -2286,6 +2504,28 @@ function App() {
                 onChange={(e) => setNoteForm({ ...noteForm, mood: e.target.value })}
                 className="w-full px-3.5 py-2 rounded-xl bg-[#1C1A17] border border-[#2E2924] text-xs text-[#F5EFE6]"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#C8B08E]">
+                Adjuntar archivos (fotos, capturas, PDFs)
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  handleFilesSelected(e.target.files, setNoteForm, setNoteError);
+                  e.target.value = '';
+                }}
+                className="w-full text-xs text-[#D8CBB8] file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#26231F] file:text-[#E6D5B8] hover:file:bg-[#322E29] bg-[#1C1A17] rounded-xl border border-[#2E2924] p-1.5"
+              />
+              {noteError && <p className="text-xs text-rose-400">{noteError}</p>}
+              {renderAttachmentsList(noteForm.attachments, (attId) =>
+                setNoteForm((prev) => ({
+                  ...prev,
+                  attachments: (prev.attachments || []).filter((a) => a.id !== attId)
+                }))
+              )}
             </div>
 
             <div>
