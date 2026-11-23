@@ -253,9 +253,9 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('calendar');
   const [activeParent, setActiveParent] = useState(() => {
-    if (urlUser === 'Na' || urlUser === 'Papá') return 'Papá';
-    if (urlUser === 'Ju' || urlUser === 'Mamá') return 'Mamá';
-    return 'Mamá';
+    if (urlUser === 'Na' || urlUser === 'Papá') return 'Na';
+    if (urlUser === 'Ju' || urlUser === 'Mamá') return 'Ju';
+    return 'Ju';
   });
 
   const [showSettings, setShowSettings] = useState(false);
@@ -811,24 +811,24 @@ function App() {
           <div className="flex items-center gap-2">
             <div className="flex items-center bg-[#1C1A17] p-1 rounded-xl border border-[#2E2924] text-xs font-medium">
               <button
-                onClick={() => setActiveParent('Mamá')}
+                onClick={() => setActiveParent('Ju')}
                 className={`px-2.5 py-1 rounded-lg transition-all ${
-                  activeParent === 'Mamá'
+                  activeParent === 'Ju'
                     ? 'bg-[#E6D5B8] text-[#121110] font-semibold shadow-sm'
                     : 'text-[#9C9183] hover:text-[#F5EFE6]'
                 }`}
               >
-                Mamá
+                Ju
               </button>
               <button
-                onClick={() => setActiveParent('Papá')}
+                onClick={() => setActiveParent('Na')}
                 className={`px-2.5 py-1 rounded-lg transition-all ${
-                  activeParent === 'Papá'
+                  activeParent === 'Na'
                     ? 'bg-[#E6D5B8] text-[#121110] font-semibold shadow-sm'
                     : 'text-[#9C9183] hover:text-[#F5EFE6]'
                 }`}
               >
-                Papá
+                Na
               </button>
             </div>
 
@@ -1259,7 +1259,7 @@ function App() {
 
                     <div className="mt-4 pt-3 border-t border-[#221F1B] flex items-center justify-between">
                       <span className="text-[11px] text-[#8A7F72]">
-                        Cargado por {app.createdBy || 'Mamá'}
+                        Cargado por {app.createdBy || 'Ju'}
                       </span>
                       <button
                         onClick={() =>
@@ -1531,7 +1531,7 @@ function App() {
                             {formatReadableDate(note.date)}
                           </span>
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#221F1B] text-[#E6D5B8] border border-[#332E28] font-medium">
-                            {note.author || 'Mamá'}
+                            {note.author || 'Ju'}
                           </span>
                           {note.mood && (
                             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-[#E6D5B8]/12 text-[#E6D5B8]">
@@ -1734,7 +1734,7 @@ function App() {
                       >
                         <div className="flex items-center justify-between text-xs text-[#9C9183] mb-1">
                           <span className="font-semibold text-[#C8B08E]">
-                            {note.title || 'Comentario'} • {note.author || 'Mamá'}
+                            {note.title || 'Comentario'} • {note.author || 'Ju'}
                           </span>
                           <span>{formatReadableDate(note.date)}</span>
                         </div>
